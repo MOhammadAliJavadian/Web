@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Web App Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+        input, button {
+            margin: 10px;
+            padding: 10px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Welcome to Telegram Web App</h1>
+    <p>Enter your data:</p>
+    <input type="text" id="userInput" placeholder="Enter mOBINA..." />
+    <button onclick="sendData()">Send to Bot</button>
+
+    <script>
+        function sendData() {
+            const userInput = document.getElementById('userInput').value;
+
+            if (Telegram.WebApp) {
+                Telegram.WebApp.sendData(userInput); // Sending data back to the bot
+            } else {
+                alert('Telegram WebApp not found!');
+            }
+        }
+    </script>
+</body>
+</html>
