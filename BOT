@@ -1,0 +1,2146 @@
+import os
+import json
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+class Config:
+    """کلاس مدیریت تنظیمات برنامه"""
+
+    def __init__(self, config_path=None):
+        """مقداردهی اولیه با مسیر فایل تنظیمات"""
+        # مسیر پیش‌فرض فایل تنظیمات
+        if config_path is None:
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+
+        self.config_path = config_path
+        self.load_config()
+
+    def load_config(self):
+        """بارگذاری تنظیمات از فایل"""
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+
+            # تنظیمات API
+            self.api_key = config_data.get('api_key', '')
+            self.api_secret = config_data.get('api_secret', '')
+
+            # تنظیمات معاملاتی
+            self.symbol = config_data.get('symbol', 'ADAUSDT')
+            self.timeframe = config_data.get('timeframe', '1h')
+            self.account_balance = float(config_data.get('account_balance', 1000.0))
+
+            # تنظیمات استراتژی
+            self.rsi_period = int(config_data.get('rsi_period', 14))
+            self.atr_period = int(config_data.get('atr_period', 14))
+            self.ma_period = int(config_data.get('ma_period', 50))
+            self.rsi_oversold = int(config_data.get('rsi_oversold', 30))
+            self.rsi_overbought = int(config_data.get('rsi_overbought', 70))
+            self.atr_multiplier = float(config_data.get('atr_multiplier', 2.0))
+            self.risk_reward_ratio = float(config_data.get('risk_reward_ratio', 2.0))
+
+            # تنظیمات مدیریت ریسک
+            self.risk_per_trade = float(config_data.get('risk_per_trade', 1.0))  # درصد ریسک هر معامله
+            self.max_daily_loss = float(config_data.get('max_daily_loss', 5.0))  # حداکثر ضرر روزانه (درصد)
+            self.max_open_trades = int(config_data.get('max_open_trades', 3))  # حداکثر تعداد معاملات همزمان
+            self.max_position_size = float(config_data.get('max_position_size', 10.0))  # حداکثر اندازه موقعیت (درصد)
+
+            # تنظیمات برنامه
+            self.update_interval = int(config_data.get('update_interval', 60))  # فاصله بروزرسانی (ثانیه)
+            self.signal_check_interval = int(
+                config_data.get('signal_check_interval', 300))  # فاصله بررسی سیگنال (ثانیه)
+            self.db_path = config_data.get('db_path',
+                                           os.path.join(os.path.dirname(os.path.dirname(__file__)), 'trades.db'))
+
+            # ایجاد مسیر دیتابیس اگر وجود ندارد
+            db_dir = os.path.dirname(self.db_path)
+            if not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+
+            logger.info("تنظیمات با موفقیت بارگذاری شدند")
+
+        except FileNotFoundError:
+            logger.warning(f"فایل تنظیمات در مسیر {self.config_path} یافت نشد. از مقادیر پیش‌فرض استفاده می‌شود.")
+            self.create_default_config()
+
+        except json.JSONDecodeError:
+            logger.error(f"خطا در خواندن فایل تنظیمات. فرمت JSON نامعتبر است.")
+            self.create_default_config()
+
+        except Exception as e:
+            logger.error(f"خطا در بارگذاری تنظیمات: {str(e)}")
+            self.create_default_config()
+
+    def create_default_config(self):
+        """ایجاد فایل تنظیمات پیش‌فرض"""
+        default_config = {
+            "api_key": "",
+            "api_secret": "",
+            "symbol": "ADAUSDT",
+            "timeframe": "1h",
+            "account_balance": 1000.0,
+            "rsi_period": 14,
+            "atr_period": 14,
+            "ma_period": 50,
+            "rsi_oversold": 30,
+            "rsi_overbought": 70,
+            "atr_multiplier": 2.0,
+            "risk_reward_ratio": 2.0,
+            "risk_per_trade": 1.0,
+            "max_daily_loss": 5.0,
+            "max_open_trades": 3,
+            "max_position_size": 10.0,
+            "update_interval": 60,
+            "signal_check_interval": 300,
+            "db_path": os.path.join(os.path.dirname(os.path.dirname(__file__)), 'trades.db')
+        }
+
+        try:
+            # ایجاد مسیر فایل اگر وجود ندارد
+            config_dir = os.path.dirname(self.config_path)
+            if not os.path.exists(config_dir):
+                os.makedirs(config_dir)
+
+            # ذخیره تنظیمات پیش‌فرض
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, indent=4)
+
+            logger.info(f"فایل تنظیمات پیش‌فرض در مسیر {self.config_path} ایجاد شد")
+
+            # بارگذاری تنظیمات پیش‌فرض
+            for key, value in default_config.items():
+                setattr(self, key, value)
+
+        except Exception as e:
+            logger.error(f"خطا در ایجاد فایل تنظیمات پیش‌فرض: {str(e)}")
+
+    def save_config(self):
+        """ذخیره تنظیمات در فایل"""
+        try:
+            config_data = {
+                "api_key": self.api_key,
+                "api_secret": self.api_secret,
+                "symbol": self.symbol,
+                "timeframe": self.timeframe,
+                "account_balance": self.account_balance,
+                "rsi_period": self.rsi_period,
+                "atr_period": self.atr_period,
+                "ma_period": self.ma_period,
+                "rsi_oversold": self.rsi_oversold,
+                "rsi_overbought": self.rsi_overbought,
+                "atr_multiplier": self.atr_multiplier,
+                "risk_reward_ratio": self.risk_reward_ratio,
+                "risk_per_trade": self.risk_per_trade,
+                "max_daily_loss": self.max_daily_loss,
+                "max_open_trades": self.max_open_trades,
+                "max_position_size": self.max_position_size,
+                "update_interval": self.update_interval,
+                "signal_check_interval": self.signal_check_interval,
+                "db_path": self.db_path
+            }
+
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4)
+
+            logger.info("تنظیمات با موفقیت ذخیره شدند")
+            return True
+
+        except Exception as e:
+            logger.error(f"خطا در ذخیره تنظیمات: {str(e)}")
+            return False
+---------------------------
+import sqlite3
+import time
+import os
+import logging
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
+
+class DatabaseHandler:
+    """کلاس مدیریت دیتابیس"""
+    def __init__(self, db_path):
+        """مقداردهی اولیه با مسیر فایل دیتابیس"""
+        self.db_path = db_path
+        # ایجاد دایرکتوری دیتابیس در صورت عدم وجود
+        db_dir = os.path.dirname(db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+        # ایجاد جداول دیتابیس
+        self.init_db()
+
+    def get_connection(self):
+        """ایجاد و برگرداندن یک اتصال به دیتابیس"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def init_db(self):
+        """ایجاد جداول دیتابیس اگر وجود ندارند"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            # جدول معاملات
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trades (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                order_id TEXT,
+                side TEXT NOT NULL,
+                entry_price REAL NOT NULL,
+                exit_price REAL DEFAULT NULL,
+                quantity REAL NOT NULL,
+                entry_time TIMESTAMP NOT NULL,
+                exit_time TIMESTAMP DEFAULT NULL,
+                stop_loss REAL NOT NULL,
+                take_profit REAL NOT NULL,
+                status TEXT NOT NULL,
+                profit_loss REAL DEFAULT NULL,
+                strategy TEXT,
+                notes TEXT
+            )
+            ''')
+            # جدول سیگنال‌ها
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                price REAL NOT NULL,
+                time TIMESTAMP NOT NULL,
+                strategy TEXT NOT NULL,
+                indicators TEXT NOT NULL,
+                executed BOOLEAN DEFAULT 0,
+                notes TEXT
+            )
+            ''')
+            # جدول تنظیمات
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+            # جدول داده‌های بازار
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                UNIQUE(symbol, timeframe, timestamp)
+            )
+            ''')
+            conn.commit()
+            logger.info("جداول دیتابیس با موفقیت ایجاد شدند")
+        except Exception as e:
+            logger.error(f"خطا در ایجاد جداول دیتابیس: {str(e)}")
+        finally:
+            if conn:
+                conn.close()
+
+    def add_trade(self, symbol, order_id, side, entry_price, quantity, stop_loss, take_profit, status='OPEN'):
+        """افزودن معامله جدید به دیتابیس"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            # زمان فعلی به عنوان زمان ورود
+            entry_time = int(time.time())
+            query = """
+            INSERT INTO trades (
+                symbol, order_id, side, entry_price, quantity, 
+                stop_loss, take_profit, entry_time, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(query, (
+                symbol, order_id, side, entry_price, quantity,
+                stop_loss, take_profit, entry_time, status
+            ))
+            conn.commit()
+            trade_id = cursor.lastrowid
+            conn.close()
+            logger.info(f"معامله جدید با شناسه {trade_id} در دیتابیس ثبت شد")
+            return trade_id
+        except Exception as e:
+            logger.error(f"خطا در افزودن معامله به دیتابیس: {str(e)}")
+            return None
+
+    def update_trade_status(self, trade_id, status, exit_price=None):
+        """بروزرسانی وضعیت معامله در دیتابیس"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            # زمان فعلی به عنوان زمان خروج
+            exit_time = int(time.time()) if status in ['CLOSED', 'STOPPED'] else None
+            if exit_price and exit_time:
+                query = """
+                UPDATE trades 
+                SET status = ?, exit_price = ?, exit_time = ? 
+                WHERE id = ?
+                """
+                cursor.execute(query, (status, exit_price, exit_time, trade_id))
+            else:
+                query = """
+                UPDATE trades 
+                SET status = ? 
+                WHERE id = ?
+                """
+                cursor.execute(query, (status, trade_id))
+            conn.commit()
+            conn.close()
+            logger.info(f"وضعیت معامله با شناسه {trade_id} به {status} تغییر یافت")
+            return True
+        except Exception as e:
+            logger.error(f"خطا در بروزرسانی وضعیت معامله: {str(e)}")
+            return False
+
+    def get_trade(self, trade_id):
+        """دریافت اطلاعات یک معامله خاص"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = "SELECT * FROM trades WHERE id = ?"
+            cursor.execute(query, (trade_id,))
+            trade = cursor.fetchone()
+            conn.close()
+            if trade:
+                return dict(trade)
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"خطا در دریافت اطلاعات معامله: {str(e)}")
+            return None
+
+    def get_open_trades(self, symbol=None):
+        """دریافت لیست معاملات باز"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            if symbol:
+                query = """
+                SELECT * FROM trades 
+                WHERE status = 'OPEN' AND symbol = ? 
+                ORDER BY entry_time DESC
+                """
+                cursor.execute(query, (symbol,))
+            else:
+                query = """
+                SELECT * FROM trades 
+                WHERE status = 'OPEN' 
+                ORDER BY entry_time DESC
+                """
+                cursor.execute(query)
+            trades = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return trades
+        except Exception as e:
+            logger.error(f"خطا در دریافت معاملات باز: {str(e)}")
+            return []
+
+    def get_total_profit(self):
+        """کل سود/زیان را برمی‌گرداند"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = '''
+            SELECT SUM(profit_loss) as total_profit FROM trades 
+            WHERE status = 'CLOSED'
+            '''
+            cursor.execute(query)
+            result = cursor.fetchone()
+            if result and result['total_profit'] is not None:
+                return float(result['total_profit'])
+            else:
+                return 0.0
+        except Exception as e:
+            logger.error(f"خطا در محاسبه کل سود/زیان: {str(e)}")
+            return 0.0
+        finally:
+            if conn:
+                conn.close()
+
+    def get_daily_profit(self):
+        """سود/زیان روز جاری را برمی‌گرداند"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            # محاسبه شروع روز جاری
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            start_of_day = int(today.timestamp())
+            query = '''
+            SELECT SUM(profit_loss) as daily_profit FROM trades 
+            WHERE status = 'CLOSED' AND exit_time >= ?
+            '''
+            cursor.execute(query, (start_of_day,))
+            result = cursor.fetchone()
+            if result and result['daily_profit'] is not None:
+                return float(result['daily_profit'])
+            else:
+                return 0.0
+        except Exception as e:
+            logger.error(f"خطا در محاسبه سود/زیان روزانه: {str(e)}")
+            return 0.0
+        finally:
+            if conn:
+                conn.close()
+
+    def get_daily_loss(self):
+        """محاسبه مجموع ضررهای روزانه (به صورت عدد مثبت)"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            # محاسبه زمان شروع روز جاری (ساعت 00:00:00)
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            start_of_day = int(today.timestamp())
+            query = """
+            SELECT 
+                SUM(
+                    CASE 
+                        WHEN side = 'BUY' AND exit_price < entry_price THEN (entry_price - exit_price) * quantity
+                        WHEN side = 'SELL' AND exit_price > entry_price THEN (exit_price - entry_price) * quantity
+                        ELSE 0
+                    END
+                ) as daily_loss
+            FROM trades
+            WHERE status IN ('CLOSED', 'STOPPED') 
+            AND exit_price IS NOT NULL
+            AND exit_time >= ?
+            """
+            cursor.execute(query, (start_of_day,))
+            result = cursor.fetchone()
+            conn.close()
+            if result and result['daily_loss'] is not None:
+                return float(result['daily_loss'])
+            else:
+                return 0.0
+        except Exception as e:
+            logger.error(f"خطا در محاسبه ضرر روزانه: {str(e)}")
+            return 0.0
+
+    def get_total_trades_count(self):
+        """دریافت تعداد کل معاملات"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = "SELECT COUNT(*) as count FROM trades"
+            cursor.execute(query)
+            result = cursor.fetchone()
+            conn.close()
+            if result:
+                return int(result['count'])
+            else:
+                return 0
+        except Exception as e:
+            logger.error(f"خطا در دریافت تعداد کل معاملات: {str(e)}")
+            return 0
+
+    def get_winning_trades_count(self):
+        """تعداد معاملات سودده را برمی‌گرداند"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = '''
+            SELECT COUNT(*) as count FROM trades 
+            WHERE status = 'CLOSED' AND profit_loss > 0
+            '''
+            cursor.execute(query)
+            result = cursor.fetchone()
+            if result:
+                return int(result['count'])
+            else:
+                return 0
+        except Exception as e:
+            logger.error(f"خطا در دریافت تعداد معاملات سودده: {str(e)}")
+            return 0
+        finally:
+            if conn:
+                conn.close()
+
+    def get_losing_trades_count(self):
+        """تعداد معاملات زیان‌ده را برمی‌گرداند"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = '''
+            SELECT COUNT(*) as count FROM trades 
+            WHERE status = 'CLOSED' AND profit_loss < 0
+            '''
+            cursor.execute(query)
+            result = cursor.fetchone()
+            if result:
+                return int(result['count'])
+            else:
+                return 0
+        except Exception as e:
+            logger.error(f"خطا در دریافت تعداد معاملات زیان‌ده: {str(e)}")
+            return 0
+        finally:
+            if conn:
+                conn.close()
+
+    def get_open_trades_count(self):
+        """دریافت تعداد معاملات باز"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = "SELECT COUNT(*) as count FROM trades WHERE status = 'OPEN'"
+            cursor.execute(query)
+            result = cursor.fetchone()
+            conn.close()
+            if result:
+                return int(result['count'])
+            else:
+                return 0
+        except Exception as e:
+            logger.error(f"خطا در دریافت تعداد معاملات باز: {str(e)}")
+            return 0
+
+    def get_last_closed_trades(self, limit=5):
+        """دریافت آخرین معاملات بسته شده"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = """
+            SELECT * FROM trades 
+            WHERE status IN ('CLOSED', 'STOPPED') 
+            ORDER BY exit_time DESC 
+            LIMIT ?
+            """
+            cursor.execute(query, (limit,))
+            trades = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return trades
+        except Exception as e:
+            logger.error(f"خطا در دریافت آخرین معاملات بسته شده: {str(e)}")
+            return []
+
+    def close(self):
+        """بستن اتصال به دیتابیس"""
+        # در SQLite نیازی به بستن اتصال نیست، اما این متد برای سازگاری با سایر دیتابیس‌ها ایجاد شده است
+        pass
+
+    def save_setting(self, key, value):
+        """ذخیره یک تنظیم در دیتابیس"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = """
+            INSERT OR REPLACE INTO settings (key, value)
+            VALUES (?, ?)
+            """
+            cursor.execute(query, (key, str(value)))
+            conn.commit()
+            conn.close()
+            logger.debug(f"تنظیم {key} با مقدار {value} ذخیره شد")
+            return True
+        except Exception as e:
+            logger.error(f"خطا در ذخیره تنظیم: {str(e)}")
+            return False
+
+        def get_setting(self, key, default=None):
+            """دریافت یک تنظیم از دیتابیس"""
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                query = "SELECT value FROM settings WHERE key = ?"
+                cursor.execute(query, (key,))
+                result = cursor.fetchone()
+                conn.close()
+                if result:
+                    return result['value']
+                else:
+                    return default
+            except Exception as e:
+                logger.error(f"خطا در دریافت تنظیم: {str(e)}")
+                return default
+
+        def get_trade_history(self, symbol=None, start_time=None, end_time=None, limit=100):
+            """دریافت تاریخچه معاملات با فیلترهای مختلف"""
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                query = "SELECT * FROM trades WHERE 1=1"
+                params = []
+                if symbol:
+                    query += " AND symbol = ?"
+                    params.append(symbol)
+                if start_time:
+                    query += " AND entry_time >= ?"
+                    params.append(start_time)
+                if end_time:
+                    query += " AND entry_time <= ?"
+                    params.append(end_time)
+                query += " ORDER BY entry_time DESC LIMIT ?"
+                params.append(limit)
+                cursor.execute(query, params)
+                trades = [dict(row) for row in cursor.fetchall()]
+                conn.close()
+                return trades
+            except Exception as e:
+                logger.error(f"خطا در دریافت تاریخچه معاملات: {str(e)}")
+                return []
+
+        def get_performance_stats(self, period='all'):
+            """دریافت آمار عملکرد معاملاتی برای دوره زمانی مشخص"""
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                # تعیین محدوده زمانی
+                time_filter = ""
+                params = []
+                if period == 'today':
+                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    time_filter = "AND exit_time >= ?"
+                    params.append(int(today.timestamp()))
+                elif period == 'week':
+                    week_ago = datetime.now() - timedelta(days=7)
+                    time_filter = "AND exit_time >= ?"
+                    params.append(int(week_ago.timestamp()))
+                elif period == 'month':
+                    month_ago = datetime.now() - timedelta(days=30)
+                    time_filter = "AND exit_time >= ?"
+                    params.append(int(month_ago.timestamp()))
+
+                # محاسبه آمار کلی
+                query = f"""
+                    SELECT 
+                        COUNT(*) as total_trades,
+                        SUM(CASE WHEN 
+                            (side = 'BUY' AND exit_price > entry_price) OR 
+                            (side = 'SELL' AND exit_price < entry_price) 
+                            THEN 1 ELSE 0 END) as winning_trades,
+                        SUM(CASE WHEN 
+                            (side = 'BUY' AND exit_price < entry_price) OR 
+                            (side = 'SELL' AND exit_price > entry_price) 
+                            THEN 1 ELSE 0 END) as losing_trades,
+                        SUM(CASE 
+                            WHEN side = 'BUY' THEN (exit_price - entry_price) * quantity
+                            WHEN side = 'SELL' THEN (entry_price - exit_price) * quantity
+                            ELSE 0 END) as total_profit,
+                        MAX(CASE 
+                            WHEN side = 'BUY' THEN (exit_price - entry_price) * quantity
+                            WHEN side = 'SELL' THEN (entry_price - exit_price) * quantity
+                            ELSE 0 END) as max_profit,
+                        MIN(CASE 
+                            WHEN side = 'BUY' THEN (exit_price - entry_price) * quantity
+                            WHEN side = 'SELL' THEN (entry_price - exit_price) * quantity
+                            ELSE 0 END) as max_loss
+                    FROM trades
+                    WHERE status IN ('CLOSED', 'STOPPED') 
+                    AND exit_price IS NOT NULL
+                    {time_filter}
+                    """
+                cursor.execute(query, params)
+                stats = cursor.fetchone()
+
+                # محاسبه آمار به تفکیک نماد
+                query = f"""
+                    SELECT 
+                        symbol,
+                        COUNT(*) as total_trades,
+                        SUM(CASE WHEN 
+                            (side = 'BUY' AND exit_price > entry_price) OR 
+                            (side = 'SELL' AND exit_price < entry_price) 
+                            THEN 1 ELSE 0 END) as winning_trades,
+                        SUM(CASE 
+                            WHEN side = 'BUY' THEN (exit_price - entry_price) * quantity
+                            WHEN side = 'SELL' THEN (entry_price - exit_price) * quantity
+                            ELSE 0 END) as total_profit
+                    FROM trades
+                    WHERE status IN ('CLOSED', 'STOPPED') 
+                    AND exit_price IS NOT NULL
+                    {time_filter}
+                    GROUP BY symbol
+                    ORDER BY total_profit DESC
+                    """
+                cursor.execute(query, params)
+                symbol_stats = [dict(row) for row in cursor.fetchall()]
+                conn.close()
+
+                # تبدیل به دیکشنری نتیجه
+                result = {}
+                if stats:
+                    stats_dict = dict(stats)
+                    # محاسبه نرخ موفقیت
+                    total = stats_dict['total_trades'] or 0
+                    winning = stats_dict['winning_trades'] or 0
+                    win_rate = (winning / total * 100) if total > 0 else 0
+                    result = {
+                        'total_trades': total,
+                        'winning_trades': winning,
+                        'losing_trades': stats_dict['losing_trades'] or 0,
+                        'win_rate': win_rate,
+                        'total_profit': stats_dict['total_profit'] or 0,
+                        'max_profit': stats_dict['max_profit'] or 0,
+                        'max_loss': stats_dict['max_loss'] or 0,
+                        'symbols': symbol_stats
+                    }
+                return result
+            except Exception as e:
+                logger.error(f"خطا در دریافت آمار عملکرد: {str(e)}")
+                return {}
+
+        def backup_database(self, backup_path=None):
+            """تهیه نسخه پشتیبان از دیتابیس"""
+            try:
+                if not backup_path:
+                    # ایجاد نام فایل پشتیبان با تاریخ و زمان فعلی
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    db_name = os.path.basename(self.db_path)
+                    db_dir = os.path.dirname(self.db_path)
+                    backup_path = os.path.join(db_dir, f"{db_name}_{timestamp}.bak")
+
+                # کپی فایل دیتابیس
+                import shutil
+                shutil.copy2(self.db_path, backup_path)
+                logger.info(f"نسخه پشتیبان دیتابیس در مسیر {backup_path} ایجاد شد")
+                return backup_path
+            except Exception as e:
+                logger.error(f"خطا در تهیه نسخه پشتیبان از دیتابیس: {str(e)}")
+                return None
+
+        def delete_old_data(self, days=30):
+            """حذف داده‌های قدیمی از دیتابیس"""
+            try:
+                # محاسبه زمان برش (داده‌های قدیمی‌تر از این زمان حذف می‌شوند)
+                cutoff_time = int((datetime.now() - timedelta(days=days)).timestamp())
+                conn = self.get_connection()
+                cursor = conn.cursor()
+
+                # حذف معاملات قدیمی بسته شده
+                query = """
+                    DELETE FROM trades
+                    WHERE status IN ('CLOSED', 'STOPPED')
+                    AND exit_time < ?
+                    """
+                cursor.execute(query, (cutoff_time,))
+                deleted_count = cursor.rowcount
+                conn.commit()
+                conn.close()
+
+                logger.info(f"{deleted_count} معامله قدیمی از دیتابیس حذف شد")
+                return deleted_count
+            except Exception as e:
+                logger.error(f"خطا در حذف داده‌های قدیمی: {str(e)}")
+                return 0
+-------------------------------------
+import time
+import hmac
+import json
+import hashlib
+import logging
+import requests
+import numpy as np
+from urllib.parse import urlencode
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class CoinexAPI:
+    """کلاس ارتباط با API صرافی Coinex"""
+
+    def __init__(self, api_key, api_secret):
+        """مقداردهی اولیه با کلیدهای API"""
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = "https://api.coinex.com/v1"
+        self.session = self._init_session()
+
+    def _init_session(self):
+        """ایجاد و تنظیم نشست HTTP"""
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'CoinexTradingBot/1.0',
+            'Content-Type': 'application/json',
+            'Connection': 'keep-alive',
+        })
+        return session
+
+    def _generate_signature(self, params):
+        """تولید امضای درخواست"""
+        # مرتب‌سازی پارامترها بر اساس کلید
+        sorted_params = sorted(params.items())
+        # تبدیل به رشته
+        data = urlencode(sorted_params)
+        # امضای HMAC
+        signature = hmac.new(
+            self.api_secret.encode('utf-8'),
+            data.encode('utf-8'),
+            hashlib.md5
+        ).hexdigest()
+        return signature
+
+    def _request(self, method, endpoint, params=None, auth=False):
+        """ارسال درخواست به API"""
+        url = f"{self.base_url}{endpoint}"
+
+        # افزودن پارامترهای عمومی
+        if params is None:
+            params = {}
+
+        if auth:
+            # افزودن پارامترهای احراز هویت
+            params['access_id'] = self.api_key
+            params['tonce'] = int(time.time() * 1000)
+            # تولید امضا
+            signature = self._generate_signature(params)
+            # افزودن امضا به هدرها
+            self.session.headers.update({'authorization': signature})
+
+        try:
+            # ارسال درخواست
+            if method == 'GET':
+                response = self.session.get(url, params=params, timeout=10)
+            elif method == 'POST':
+                response = self.session.post(url, json=params, timeout=10)
+            else:
+                raise ValueError(f"روش HTTP نامعتبر: {method}")
+
+            # بررسی کد وضعیت
+            response.raise_for_status()
+
+            # تبدیل پاسخ به JSON
+            data = response.json()
+
+            # بررسی کد وضعیت API
+            if data.get('code') != 0:
+                logger.error(f"خطای API: {data.get('message')}")
+                return None
+
+            return data.get('data')
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"خطا در ارتباط با API: {str(e)}")
+            return None
+
+    def get_market_data(self, symbol, timeframe):
+        """دریافت داده‌های بازار در فرمت سازگار با TA-Lib"""
+        try:
+            # تبدیل تایم‌فریم به فرمت مورد نیاز API
+            interval_map = {
+                '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min',
+                '1h': '1hour', '2h': '2hour', '4h': '4hour', '6h': '6hour',
+                '12h': '12hour', '1d': '1day', '3d': '3day', '1w': '1week'
+            }
+            interval = interval_map.get(timeframe, '1hour')
+
+            # دریافت کندل‌ها
+            params = {
+                'market': symbol,
+                'type': interval,
+                'limit': 100  # تعداد کندل‌های درخواستی
+            }
+
+            response = self._request('GET', '/market/kline', params)
+
+            if not response:
+                logger.error(f"داده‌ای برای {symbol} با تایم‌فریم {timeframe} دریافت نشد")
+                return None
+
+            # تبدیل داده‌ها به فرمت مناسب
+            candles = []
+            for candle in response:
+                candles.append({
+                    'timestamp': int(candle[0]),
+                    'open': float(candle[1]),
+                    'high': float(candle[2]),
+                    'low': float(candle[3]),
+                    'close': float(candle[4]),
+                    'volume': float(candle[5])
+                })
+
+            # مرتب‌سازی بر اساس زمان (صعودی)
+            candles.sort(key=lambda x: x['timestamp'])
+
+            # بررسی تعداد کافی داده
+            if len(candles) < 10:
+                logger.warning(f"تعداد کندل‌های دریافتی برای {symbol} کافی نیست: {len(candles)}")
+                return None
+
+            # تبدیل به آرایه‌های NumPy برای استفاده در TA-Lib
+            result = {
+                'timestamp': np.array([c['timestamp'] for c in candles], dtype=np.int64),
+                'open': np.array([c['open'] for c in candles], dtype=np.float64),
+                'high': np.array([c['high'] for c in candles], dtype=np.float64),
+                'low': np.array([c['low'] for c in candles], dtype=np.float64),
+                'close': np.array([c['close'] for c in candles], dtype=np.float64),
+                'volume': np.array([c['volume'] for c in candles], dtype=np.float64)
+            }
+
+            logger.debug(f"داده‌های بازار برای {symbol} با موفقیت دریافت شد: {len(candles)} کندل")
+            return result
+
+        except Exception as e:
+            logger.error(f"خطا در دریافت داده‌های بازار برای {symbol}: {str(e)}")
+            return None
+
+    def get_balance(self):
+        """دریافت موجودی حساب"""
+        try:
+            response = self._request('GET', '/balance/info', auth=True)
+            if not response:
+                return 0
+
+            # استخراج موجودی USDT
+            usdt_balance = float(response.get('USDT', {}).get('available', '0'))
+            return usdt_balance
+
+        except Exception as e:
+            logger.error(f"خطا در دریافت موجودی حساب: {str(e)}")
+            return 0
+
+    def place_order(self, symbol, side, price, amount, order_type='limit'):
+        """ثبت سفارش"""
+        try:
+            # تبدیل پارامترها به فرمت مورد نیاز API
+            side_map = {'BUY': 'buy', 'SELL': 'sell'}
+            type_map = {'limit': 'limit', 'market': 'market'}
+
+            params = {
+                'market': symbol,
+                'type': side_map.get(side, 'buy'),
+                'amount': str(amount),
+                'price': str(price) if order_type == 'limit' else '0',
+                'order_type': type_map.get(order_type, 'limit')
+            }
+
+            response = self._request('POST', '/order/limit', params, auth=True)
+
+            if not response:
+                return None
+
+            # استخراج شناسه سفارش
+            order_id = response.get('id')
+            logger.info(f"سفارش با موفقیت ثبت شد. شناسه: {order_id}")
+
+            return order_id
+
+        except Exception as e:
+            logger.error(f"خطا در ثبت سفارش: {str(e)}")
+            return None
+
+    def cancel_order(self, order_id, symbol):
+        """لغو سفارش"""
+        try:
+            params = {
+                'id': order_id,
+                'market': symbol
+            }
+
+            response = self._request('POST', '/order/pending/cancel', params, auth=True)
+
+            if not response:
+                return False
+
+            logger.info(f"سفارش با شناسه {order_id} با موفقیت لغو شد")
+            return True
+
+        except Exception as e:
+            logger.error(f"خطا در لغو سفارش: {str(e)}")
+            return False
+
+    def get_order_status(self, order_id, symbol):
+        """دریافت وضعیت سفارش"""
+        try:
+            params = {
+                'id': order_id,
+                'market': symbol
+            }
+
+            response = self._request('GET', '/order/status', params, auth=True)
+
+            if not response:
+                return None
+
+            return response
+
+        except Exception as e:
+            logger.error(f"خطا در دریافت وضعیت سفارش: {str(e)}")
+            return None
+
+
+    def check_connection(self):
+        """بررسی اتصال به صرافی"""
+        try:
+            # یک درخواست ساده برای بررسی اتصال
+            import requests
+            response = requests.get('https://api.coinex.com/v1/market/list')
+
+            # چاپ پاسخ برای دیباگ
+            print("API Response Status Code:", response.status_code)
+            print("API Response Content:", response.text[:200])  # نمایش 200 کاراکتر اول پاسخ
+
+            # بررسی پاسخ
+            if response.status_code == 200:
+                data = response.json()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"خطا در بررسی اتصال به صرافی: {str(e)}")
+            # چاپ جزئیات بیشتر خطا
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def get_symbols(self):
+        """دریافت لیست نمادهای معاملاتی"""
+        try:
+            response = requests.get('https://api.coinex.com/v1/market/list')
+            if response.status_code == 200:
+                data = response.json()
+                if data['code'] == 0:
+                    print("Available symbols:", data['data'])
+                    return data['data']
+            return None
+        except Exception as e:
+            logger.error(f"خطا در دریافت لیست نمادها: {str(e)}")
+            return None
+
+    def get_klines(self, market_symbol, interval='1hour', limit=100):
+        """دریافت کندل‌استیک‌های بازار"""
+        try:
+            # اصلاح URL با حذف اسلش اضافی
+            url = f"{self.base_url}/market/kline"
+            params = {
+                'market': market_symbol,
+                'type': interval,
+                'limit': limit
+            }
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"خطا در ارتباط با API: {e}")
+            return None
+
+    def _convert_timeframe(self, timeframe):
+        """تبدیل تایم‌فریم به فرمت مورد نیاز API"""
+        # بررسی فرمت صحیح تایم‌فریم برای Coinex
+        # مثال: 1min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 12hour, 1day, 3day, 1week
+        return timeframe
+
+    def _format_klines(self, data):
+        """تبدیل داده‌های کندل به فرمت مورد نیاز"""
+        # ساختار داده‌های برگشتی از Coinex را به فرمت مورد نیاز تبدیل کنید
+        # مثال:
+        # [
+        #   [time, open, close, high, low, volume, ...],
+        #   ...
+        # ]
+        formatted_data = {
+            'time': [],
+            'open': [],
+            'high': [],
+            'low': [],
+            'close': [],
+            'volume': []
+        }
+
+        for candle in data:
+            # بررسی ساختار داده‌های Coinex و تطبیق با فرمت مورد نیاز
+            # این قسمت ممکن است نیاز به تغییر داشته باشد
+            formatted_data['time'].append(candle[0])
+            formatted_data['open'].append(float(candle[1]))
+            formatted_data['high'].append(float(candle[2]))
+            formatted_data['low'].append(float(candle[3]))
+            formatted_data['close'].append(float(candle[4]))
+            formatted_data['volume'].append(float(candle[5]))
+
+        return formatted_data
+
+---------------------------------------------
+import logging
+import sys
+import os
+from datetime import datetime
+
+
+def setup_logging(log_level=logging.INFO, log_file=None):
+    """Set up logging with proper encoding for console and file outputs"""
+
+    # Create logs directory if it doesn't exist
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+
+    # Default log file if not provided
+    if log_file is None:
+        log_file = os.path.join(logs_dir, f"trading_bot_{datetime.now().strftime('%Y%m%d')}.log")
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    # Clear any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Create file handler
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    # Create console handler with a higher log level
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+    # Force UTF-8 encoding for console output
+    console_handler.stream.reconfigure(encoding='utf-8', errors='replace')
+    root_logger.addHandler(console_handler)
+
+    return root_logger
+------------------------------------------------
+import os
+import sys
+import time
+import logging
+import signal
+import argparse
+from datetime import datetime
+
+# تنظیم مسیر برای import ماژول‌ها
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# تنظیم لاگر
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("trading_bot.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# import ماژول‌های برنامه
+from bot.config import Config
+from bot.database import DatabaseHandler
+from bot.exchange import CoinexAPI
+from bot.strategy import Strategy
+from bot.telegram_bot import TelegramBot
+
+
+class TradingBot:
+    """کلاس اصلی ربات معاملاتی"""
+
+    def __init__(self, config=None):
+        """مقداردهی اولیه"""
+        logger.info("شروع راه‌اندازی ربات معاملاتی")
+
+        # بارگذاری تنظیمات
+        self.config = config if config else Config()
+
+        # اتصال به دیتابیس
+        self.db = DatabaseHandler(self.config.db_path)
+
+        # اتصال به صرافی
+        self.exchange = CoinexAPI(self.config.api_key, self.config.api_secret)
+
+        # بررسی نمادهای معاملاتی
+        symbols = self.exchange.get_symbols()
+        if symbols and self.config.symbol not in symbols:
+            logger.error(f"نماد {self.config.symbol} در لیست نمادهای معاملاتی صرافی یافت نشد!")
+            logger.info(f"نمادهای موجود: {symbols[:10]}...")  # نمایش 10 نماد اول برای نمونه
+
+        # ایجاد استراتژی
+        self.strategy = Strategy(self.db, self.exchange, self.config)
+
+        self.telegram_token = '7993408751:AAGRaRxgc9TiDJ3u5P9hFp8WYf6BJpCqiKs'
+        self.telegram_chat_id = '88145571'
+
+        # ایجاد ربات تلگرام (اگر تنظیمات آن موجود باشد)
+        self.telegram_bot = None
+        if hasattr(self.config, 'telegram_token') and hasattr(self.config, 'telegram_chat_id'):
+            self.telegram_bot = TelegramBot(
+                self.config.telegram_token,
+                self.config.telegram_chat_id,
+                self.db,
+                self.exchange,
+                self.config
+            )
+
+        # وضعیت اجرای ربات
+        self.is_running = False
+        logger.info("ربات معاملاتی با موفقیت راه‌اندازی شد")
+
+
+    def start(self):
+        """شروع ربات معاملاتی"""
+        if self.is_running:
+            logger.warning("ربات معاملاتی در حال اجرا است")
+            return
+
+        logger.info("شروع فعالیت ربات معاملاتی")
+
+        # بررسی اتصال به صرافی
+        if not self.exchange.check_connection():
+            logger.error("خطا در اتصال به صرافی. ربات شروع به کار نکرد")
+            return
+
+        # شروع ربات تلگرام
+        if self.telegram_bot:
+            self.telegram_bot.start()
+
+        self.is_running = True
+
+        try:
+            while self.is_running:
+                try:
+                    # دریافت داده‌های بازار
+                    market_data = self.exchange.get_market_data(
+                        self.config.symbol,
+                        self.config.timeframe
+                    )
+
+                    if market_data:
+                        # اجرای استراتژی
+                        self.strategy.execute(market_data)
+                    else:
+                        logger.warning("خطا در دریافت داده‌های بازار")
+
+                    # انتظار تا بروزرسانی بعدی
+                    time.sleep(self.config.update_interval)
+
+                except Exception as e:
+                    logger.error(f"خطا در چرخه اصلی ربات: {str(e)}")
+                    time.sleep(10)  # انتظار کوتاه قبل از تلاش مجدد
+
+        except KeyboardInterrupt:
+            logger.info("ربات با دستور کاربر متوقف شد")
+        finally:
+            self.stop()
+
+    def stop(self):
+        """توقف ربات معاملاتی"""
+        if not self.is_running:
+            logger.warning("ربات معاملاتی در حال اجرا نیست")
+            return
+
+        logger.info("توقف ربات معاملاتی")
+
+        # توقف ربات تلگرام
+        if self.telegram_bot:
+            self.telegram_bot.stop()
+
+        # بستن اتصال دیتابیس
+        self.db.close()
+
+        self.is_running = False
+        logger.info("ربات معاملاتی متوقف شد")
+
+
+# تعریف تابع signal_handler خارج از کلاس
+def signal_handler(sig, frame):
+    """مدیریت سیگنال‌های سیستمی"""
+    logger.info(f"سیگنال {sig} دریافت شد. در حال خروج...")
+    if 'bot' in globals() and bot.is_running:
+        bot.stop()
+    sys.exit(0)
+
+
+# تعریف تابع main خارج از کلاس
+def main():
+    """تابع اصلی برای اجرای برنامه"""
+    # پردازش آرگومان‌های خط فرمان
+    parser = argparse.ArgumentParser(description="ربات معاملاتی ارزهای دیجیتال")
+    parser.add_argument("--config", help="مسیر فایل تنظیمات", default=None)
+    args = parser.parse_args()
+
+    # ثبت مدیریت سیگنال‌ها
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # ایجاد و اجرای ربات
+    config = Config(args.config)
+    bot = TradingBot(config)
+    bot.start()
+
+
+if __name__ == "__main__":
+    main()
+---------------------------------------------------------------
+import os
+import time
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class StatusMonitor:
+    """کلاس نمایش وضعیت و آمار ربات"""
+
+    def __init__(self, db, exchange, config):
+        """مقداردهی اولیه با دیتابیس، صرافی و تنظیمات"""
+        self.db = db
+        self.exchange = exchange
+        self.config = config
+        self.last_update = 0
+        self.update_interval = 5  # بروزرسانی هر 5 ثانیه
+
+    def start(self):
+        """شروع نمایش وضعیت"""
+        logger.info("نمایشگر وضعیت فعال شد")
+        while True:
+            try:
+                # بررسی زمان آخرین بروزرسانی
+                current_time = time.time()
+                if current_time - self.last_update >= self.update_interval:
+                    self.display_status()
+                    self.last_update = current_time
+                # تاخیر کوتاه برای کاهش مصرف CPU
+                time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("نمایشگر وضعیت متوقف شد")
+                break
+            except Exception as e:
+                logger.error(f"خطا در نمایشگر وضعیت: {str(e)}")
+                time.sleep(5)  # تاخیر بیشتر در صورت بروز خطا
+
+    def display_status(self):
+        """نمایش آمار عملکرد ربات"""
+        try:
+            # دریافت آمار از دیتابیس
+            total_trades = self.db.get_total_trades_count()
+            winning_trades = self.db.get_winning_trades_count()
+            losing_trades = self.db.get_losing_trades_count()
+            open_trades = self.db.get_open_trades_count()
+            total_profit = self.db.get_total_profit()
+            daily_profit = self.db.get_daily_profit()
+
+            win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+
+            # پاکسازی صفحه نمایش
+            os.system('cls' if os.name == 'nt' else 'clear')
+
+            # نمایش اطلاعات
+            print("\n" + "=" * 50)
+            print(f"آمار عملکرد ربات معاملاتی - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 50)
+            print(f"نماد معاملاتی: {self.config.symbol}")
+            print(f"تایم‌فریم: {self.config.timeframe}")
+            print("-" * 50)
+            print(f"تعداد کل معاملات: {total_trades}")
+            print(f"معاملات سودده: {winning_trades}")
+            print(f"معاملات زیان‌ده: {losing_trades}")
+            print(f"معاملات باز: {open_trades}")
+            print(f"نرخ موفقیت: {win_rate:.2f}%")
+            print("-" * 50)
+            print(f"سود کل: {total_profit:.6f}")
+            print(f"سود امروز: {daily_profit:.6f}")
+            print("=" * 50)
+
+            # نمایش معاملات باز
+            open_trades_list = self.db.get_open_trades(self.config.symbol)
+            if open_trades_list:
+                print("\nمعاملات باز:")
+                print("-" * 50)
+                for trade in open_trades_list:
+                    entry_time = datetime.fromtimestamp(trade['entry_time']).strftime('%Y-%m-%d %H:%M:%S')
+                    print(
+                        f"شناسه: {trade['id']} | نماد: {trade['symbol']} | جهت: {trade['side']} | قیمت ورود: {trade['entry_price']:.6f}")
+                    print(
+                        f"مقدار: {trade['quantity']:.6f} | حد ضرر: {trade['stop_loss']:.6f} | حد سود: {trade['take_profit']:.6f}")
+                    print(f"زمان ورود: {entry_time}")
+                    print("-" * 50)
+
+            # نمایش آخرین معاملات بسته شده
+            closed_trades = self.db.get_last_closed_trades(5)
+            if closed_trades:
+                print("\nآخرین معاملات بسته شده:")
+                print("-" * 50)
+                for trade in closed_trades:
+                    entry_time = datetime.fromtimestamp(trade['entry_time']).strftime('%Y-%m-%d %H:%M:%S')
+                    exit_time = datetime.fromtimestamp(trade['exit_time']).strftime('%Y-%m-%d %H:%M:%S') if trade.get(
+                        'exit_time') else 'N/A'
+
+                    # محاسبه سود/زیان
+                    profit = None
+                    if trade.get('exit_price') and trade.get('entry_price') and trade.get('quantity'):
+                        if trade['side'] == 'BUY':
+                            profit = (trade['exit_price'] - trade['entry_price']) * trade['quantity']
+                        else:
+                            profit = (trade['entry_price'] - trade['exit_price']) * trade['quantity']
+
+                    profit_str = f"{profit:.6f}" if profit is not None else "N/A"
+                    profit_color = "\033[92m" if profit and profit > 0 else "\033[91m" if profit and profit < 0 else ""
+                    reset_color = "\033[0m"
+
+                    print(
+                        f"شناسه: {trade['id']} | نماد: {trade['symbol']} | جهت: {trade['side']} | وضعیت: {trade['status']}")
+                    print(
+                        f"قیمت ورود: {trade['entry_price']:.6f} | قیمت خروج: {trade['exit_price']:.6f if trade.get('exit_price') else 'N/A'}")
+                    print(f"مقدار: {trade['quantity']:.6f} | سود/زیان: {profit_color}{profit_str}{reset_color}")
+                    print(f"زمان ورود: {entry_time} | زمان خروج: {exit_time}")
+                    print("-" * 50)
+
+        except Exception as e:
+            logger.error(f"خطا در نمایش آمار: {str(e)}")
+-----------------------------------------------------------------------
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class RiskManager:
+    """کلاس مدیریت ریسک معاملات"""
+
+    def __init__(self, config, db):
+        """مقداردهی اولیه با تنظیمات و دیتابیس"""
+        self.config = config
+        self.db = db
+
+    def check_risk_limits(self):
+        """بررسی محدودیت‌های ریسک"""
+        try:
+            # بررسی تعداد معاملات باز
+            open_trades_count = self.db.get_open_trades_count()
+            if open_trades_count >= self.config.max_open_trades:
+                logger.info(
+                    f"تعداد معاملات باز ({open_trades_count}) به حداکثر مجاز ({self.config.max_open_trades}) رسیده است")
+                return False
+
+            # بررسی ضرر روزانه
+            daily_loss = self.db.get_daily_loss()
+            max_daily_loss_amount = (self.config.max_daily_loss / 100) * self.config.account_balance
+
+            if daily_loss >= max_daily_loss_amount:
+                logger.info(f"ضرر روزانه ({daily_loss:.2f}) به حداکثر مجاز ({max_daily_loss_amount:.2f}) رسیده است")
+                return False
+
+            # همه شرایط ریسک برقرار هستند
+            return True
+
+        except Exception as e:
+            logger.error(f"خطا در بررسی محدودیت‌های ریسک: {str(e)}")
+            return False
+
+    def calculate_position_size(self, entry_price, stop_loss):
+        """محاسبه اندازه موقعیت بر اساس مدیریت ریسک"""
+        try:
+            # محاسبه درصد ریسک هر معامله
+            risk_amount = (self.config.risk_per_trade / 100) * self.config.account_balance
+
+            # محاسبه فاصله قیمتی تا حد ضرر
+            if entry_price > stop_loss:  # معامله خرید
+                price_distance = entry_price - stop_loss
+                side = 'BUY'
+            else:  # معامله فروش
+                price_distance = stop_loss - entry_price
+                side = 'SELL'
+
+            # محاسبه درصد فاصله تا حد ضرر
+            risk_percentage = abs(price_distance / entry_price)
+
+            # محاسبه اندازه موقعیت
+            position_size = risk_amount / (entry_price * risk_percentage)
+
+            # اعمال محدودیت حداکثر اندازه موقعیت
+            max_position_size = (self.config.max_position_size / 100) * self.config.account_balance / entry_price
+            position_size = min(position_size, max_position_size)
+
+            logger.info(f"اندازه موقعیت محاسبه شده: {position_size:.6f} برای معامله {side}")
+
+            return position_size
+
+        except Exception as e:
+            logger.error(f"خطا در محاسبه اندازه موقعیت: {str(e)}")
+            return 0
+-------------------------------------------
+import numpy as np
+import talib
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class RSI_ATR_Strategy:
+    """استراتژی معاملاتی بر اساس RSI و ATR"""
+
+    def __init__(self, config):
+        """مقداردهی اولیه با تنظیمات"""
+        self.config = config
+        self.last_signal = None
+        self.last_signal_time = 0
+
+        # تنظیمات پیش‌فرض اگر در کانفیگ موجود نباشند
+        self.rsi_period = getattr(config, 'rsi_period', 14)
+        self.atr_period = getattr(config, 'atr_period', 14)
+        self.ma_period = getattr(config, 'ma_period', 50)
+        self.rsi_oversold = getattr(config, 'rsi_oversold', 30)
+        self.rsi_overbought = getattr(config, 'rsi_overbought', 70)
+        self.atr_multiplier = getattr(config, 'atr_multiplier', 2.0)
+        self.risk_reward_ratio = getattr(config, 'risk_reward_ratio', 2.0)
+
+    def calculate_indicators(self, market_data):
+        """محاسبه اندیکاتورهای مورد نیاز استراتژی"""
+        try:
+            # استخراج داده‌های بازار
+            close_prices = market_data['close']
+            high_prices = market_data['high']
+            low_prices = market_data['low']
+
+            # محاسبه RSI
+            rsi = talib.RSI(close_prices, timeperiod=self.rsi_period)
+
+            # محاسبه ATR
+            atr = talib.ATR(high_prices, low_prices, close_prices, timeperiod=self.atr_period)
+
+            # محاسبه میانگین متحرک
+            ma = talib.SMA(close_prices, timeperiod=self.ma_period)
+
+            return {
+                'rsi': rsi,
+                'atr': atr,
+                'ma': ma,
+                'close': close_prices,
+                'high': high_prices,
+                'low': low_prices
+            }
+        except Exception as e:
+            logger.error(f"خطا در محاسبه اندیکاتورها: {str(e)}")
+            return None
+
+    def generate_signal(self, market_data):
+        """تولید سیگنال معاملاتی بر اساس استراتژی"""
+        try:
+            # محاسبه اندیکاتورها
+            indicators = self.calculate_indicators(market_data)
+            if not indicators:
+                return None
+
+            # استخراج مقادیر آخرین کندل
+            current_rsi = indicators['rsi'][-1]
+            current_close = indicators['close'][-1]
+            current_ma = indicators['ma'][-1]
+            current_atr = indicators['atr'][-1]
+
+            # بررسی شرایط سیگنال خرید
+            if (current_rsi < self.rsi_oversold and
+                    current_close > current_ma and
+                    current_rsi > indicators['rsi'][-2]):
+                # محاسبه حد ضرر و حد سود
+                stop_loss = current_close - (current_atr * self.atr_multiplier)
+                take_profit = current_close + (current_atr * self.atr_multiplier * self.risk_reward_ratio)
+
+                return {
+                    'signal': 'BUY',
+                    'price': current_close,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'rsi': current_rsi,
+                    'atr': current_atr
+                }
+
+            # بررسی شرایط سیگنال فروش
+            elif (current_rsi > self.rsi_overbought and
+                  current_close < current_ma and
+                  current_rsi < indicators['rsi'][-2]):
+                # محاسبه حد ضرر و حد سود
+                stop_loss = current_close + (current_atr * self.atr_multiplier)
+                take_profit = current_close - (current_atr * self.atr_multiplier * self.risk_reward_ratio)
+
+                return {
+                    'signal': 'SELL',
+                    'price': current_close,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'rsi': current_rsi,
+                    'atr': current_atr
+                }
+
+            # عدم وجود سیگنال
+            return {
+                'signal': 'NEUTRAL',
+                'price': current_close,
+                'rsi': current_rsi,
+                'atr': current_atr
+            }
+        except Exception as e:
+            logger.error(f"خطا در تولید سیگنال: {str(e)}")
+            return None
+
+    def check_exit_conditions(self, trade, current_price):
+        """بررسی شرایط خروج از معامله"""
+        try:
+            # استخراج اطلاعات معامله
+            entry_price = trade['entry_price']
+            stop_loss = trade['stop_loss']
+            take_profit = trade['take_profit']
+            side = trade['side']
+
+            # بررسی شرایط خروج برای معاملات خرید
+            if side == 'BUY':
+                # بررسی حد ضرر
+                if current_price <= stop_loss:
+                    return {
+                        'exit': True,
+                        'reason': 'STOP_LOSS',
+                        'price': current_price
+                    }
+                # بررسی حد سود
+                elif current_price >= take_profit:
+                    return {
+                        'exit': True,
+                        'reason': 'TAKE_PROFIT',
+                        'price': current_price
+                    }
+
+            # بررسی شرایط خروج برای معاملات فروش
+            elif side == 'SELL':
+                # بررسی حد ضرر
+                if current_price >= stop_loss:
+                    return {
+                        'exit': True,
+                        'reason': 'STOP_LOSS',
+                        'price': current_price
+                    }
+                # بررسی حد سود
+                elif current_price <= take_profit:
+                    return {
+                        'exit': True,
+                        'reason': 'TAKE_PROFIT',
+                        'price': current_price
+                    }
+
+            # عدم وجود شرایط خروج
+            return {
+                'exit': False,
+                'price': current_price
+            }
+        except Exception as e:
+            logger.error(f"خطا در بررسی شرایط خروج: {str(e)}")
+            return {'exit': False}
+-------------------------------------------------------------
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import os
+import sys
+import time
+import logging
+import traceback
+from datetime import datetime
+
+# اضافه کردن مسیر پروژه به سیستم
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# وارد کردن ماژول‌های پروژه
+from bot.config import Config
+from bot.logger import setup_logging
+from bot.main import TradingBot
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """مدیریت استثناهای کنترل نشده"""
+    if issubclass(exc_type, KeyboardInterrupt):
+        # اجازه دادن به Ctrl+C برای خروج از برنامه
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    # لاگ کردن استثنا
+    logger = logging.getLogger('root')
+    logger.error("خطای کنترل نشده:", exc_info=(exc_type, exc_value, exc_traceback))
+    # نمایش خطا در کنسول
+    print("\n=== خطای کنترل نشده ===")
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
+    print("=========================\n")
+
+
+if __name__ == "__main__":
+    try:
+        # تنظیم لاگر با پشتیبانی از یونیکد
+        logger = setup_logging()
+        logger.info("برنامه در حال راه‌اندازی...")
+
+        # تنظیم هندلر استثناها
+        sys.excepthook = handle_exception
+
+        # بارگذاری تنظیمات
+        config = Config()
+
+        # ایجاد و اجرای ربات
+        bot = TradingBot(config)
+        bot.start()
+    except KeyboardInterrupt:
+        print("\nبرنامه با دستور کاربر متوقف شد.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\nخطا در راه‌اندازی برنامه: {str(e)}")
+        traceback.print_exc()
+        sys.exit(1)
+-----------------------------------------------------------
+import time
+import logging
+from datetime import datetime
+from bot.risk_manager import RiskManager
+
+logger = logging.getLogger(__name__)
+
+
+class Strategy:
+    """کلاس اصلی استراتژی معاملاتی"""
+
+    def __init__(self, db, exchange, config):
+        """مقداردهی اولیه با دیتابیس، صرافی و تنظیمات"""
+        self.db = db
+        self.exchange = exchange
+        self.config = config
+        self.risk_manager = RiskManager(config, db)
+        self.last_check_time = 0
+
+        # ایجاد نمونه از استراتژی RSI_ATR
+        from bot.rsi_atr_strategy import RSI_ATR_Strategy
+        self.strategy = RSI_ATR_Strategy(config)
+
+    def execute(self, market_data):
+        """اجرای استراتژی معاملاتی"""
+        try:
+            current_time = time.time()
+
+            # بررسی معاملات باز برای خروج احتمالی
+            self.check_open_trades(market_data)
+
+            # بررسی شرایط ورود به معامله جدید (با فاصله زمانی مناسب)
+            if current_time - self.last_check_time >= self.config.signal_check_interval:
+                self.check_entry_signals(market_data)
+                self.last_check_time = current_time
+
+        except Exception as e:
+            logger.error(f"خطا در اجرای استراتژی: {str(e)}")
+
+    def check_entry_signals(self, market_data):
+        """بررسی سیگنال‌های ورود به معامله"""
+        try:
+            # بررسی محدودیت‌های ریسک
+            if not self.risk_manager.check_risk_limits():
+                logger.info("محدودیت‌های ریسک اجازه ورود به معامله جدید را نمی‌دهند")
+                return
+
+            # دریافت سیگنال از استراتژی
+            signal = self.strategy.generate_signal(market_data)
+
+            if not signal or signal['signal'] == 'NEUTRAL':
+                return
+
+            # اطلاعات سیگنال
+            signal_type = signal['signal']  # BUY یا SELL
+            entry_price = signal['price']
+            stop_loss = signal['stop_loss']
+            take_profit = signal['take_profit']
+
+            logger.info(
+                f"سیگنال {signal_type} دریافت شد. قیمت: {entry_price}, حد ضرر: {stop_loss}, حد سود: {take_profit}")
+
+            # محاسبه اندازه موقعیت
+            position_size = self.risk_manager.calculate_position_size(entry_price, stop_loss)
+
+            if position_size <= 0:
+                logger.warning("اندازه موقعیت محاسبه شده نامعتبر است")
+                return
+
+            # ثبت سفارش
+            order_id = self.exchange.place_order(
+                symbol=self.config.symbol,
+                side=signal_type,
+                price=entry_price,
+                amount=position_size,
+                order_type='limit'
+            )
+
+            if not order_id:
+                logger.error("خطا در ثبت سفارش")
+                return
+
+            # ثبت معامله در دیتابیس
+            trade_data = {
+                'symbol': self.config.symbol,
+                'side': signal_type,
+                'entry_price': entry_price,
+                'quantity': position_size,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'order_id': order_id
+            }
+
+            trade_id = self.db.add_trade(trade_data)
+
+            if trade_id:
+                logger.info(f"معامله جدید با شناسه {trade_id} ثبت شد")
+            else:
+                logger.error("خطا در ثبت معامله در دیتابیس")
+                # تلاش برای لغو سفارش در صورت خطا در ثبت معامله
+                self.exchange.cancel_order(order_id, self.config.symbol)
+
+        except Exception as e:
+            logger.error(f"خطا در بررسی سیگنال‌های ورود: {str(e)}")
+
+    def check_open_trades(self, market_data):
+        """بررسی معاملات باز برای خروج احتمالی"""
+        try:
+            # دریافت قیمت فعلی
+            current_price = market_data['close'][-1]
+
+            # دریافت معاملات باز
+            open_trades = self.db.get_open_trades(self.config.symbol)
+
+            for trade in open_trades:
+                # بررسی شرایط خروج
+                exit_signal = self.strategy.check_exit_conditions(trade, current_price)
+
+                if exit_signal['exit']:
+                    # خروج از معامله
+                    logger.info(f"شرایط خروج برای معامله {trade['id']} فراهم شد. دلیل: {exit_signal['reason']}")
+
+                    # ثبت سفارش خروج
+                    exit_price = exit_signal['price']
+                    exit_side = 'SELL' if trade['side'] == 'BUY' else 'BUY'
+
+                    order_id = self.exchange.place_order(
+                        symbol=self.config.symbol,
+                        side=exit_side,
+                        price=exit_price,
+                        amount=trade['quantity'],
+                        order_type='market'  # استفاده از سفارش بازار برای خروج سریع
+                    )
+
+                    if order_id:
+                        # بستن معامله در دیتابیس
+                        profit = self.db.close_trade(trade['id'], exit_price, exit_signal['reason'])
+
+                        if profit is not None:
+                            logger.info(f"معامله {trade['id']} با موفقیت بسته شد. سود/زیان: {profit:.6f}")
+                        else:
+                            logger.error(f"خطا در بستن معامله {trade['id']} در دیتابیس")
+                    else:
+                        logger.error(f"خطا در ثبت سفارش خروج برای معامله {trade['id']}")
+
+        except Exception as e:
+            logger.error(f"خطا در بررسی معاملات باز: {str(e)}")
+----------------------------------------------------------------------------------
+import logging
+import telebot
+import threading
+import time
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class TelegramBot:
+    """کلاس ربات تلگرام برای ارسال اعلان‌ها و دریافت دستورات"""
+
+    def __init__(self, token, chat_id, db, exchange, config):
+        """مقداردهی اولیه با توکن و شناسه چت"""
+        self.token = token
+        self.chat_id = chat_id
+        self.db = db
+        self.exchange = exchange
+        self.config = config
+
+        # ایجاد نمونه ربات تلگرام
+        self.bot = telebot.TeleBot(token)
+
+        # تعریف دستورات
+        self.setup_commands()
+
+        # وضعیت اجرای ربات
+        self.is_running = False
+        self.bot_thread = None
+
+    def setup_commands(self):
+        """تنظیم دستورات ربات"""
+
+        @self.bot.message_handler(commands=['start'])
+        def start_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            self.bot.reply_to(message, "ربات معاملاتی فعال است. برای مشاهده دستورات از /help استفاده کنید.")
+
+        @self.bot.message_handler(commands=['help'])
+        def help_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            help_text = """
+            دستورات ربات:
+            /status - نمایش وضعیت ربات
+            /balance - نمایش موجودی حساب
+            /trades - نمایش معاملات باز
+            /history - نمایش تاریخچه معاملات
+            /profit - نمایش سود/زیان
+            /settings - نمایش تنظیمات
+            """
+            self.bot.reply_to(message, help_text)
+
+        @self.bot.message_handler(commands=['status'])
+        def status_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            # بررسی اتصال به صرافی
+            connection_status = "متصل" if self.exchange.check_connection() else "قطع"
+
+            # دریافت تعداد معاملات باز
+            open_trades_count = self.db.get_open_trades_count()
+
+            # دریافت سود/زیان روزانه
+            daily_profit = self.db.get_daily_profit()
+            daily_loss = self.db.get_daily_loss()
+            daily_net = daily_profit - daily_loss
+
+            status_text = f"""
+            🤖 وضعیت ربات معاملاتی:
+
+            🔌 اتصال به صرافی: {connection_status}
+            💱 نماد معاملاتی: {self.config.symbol}
+            ⏱ تایم‌فریم: {self.config.timeframe}
+
+            📊 معاملات باز: {open_trades_count}
+            💰 سود روزانه: {daily_profit:.2f} USDT
+            📉 ضرر روزانه: {daily_loss:.2f} USDT
+            📈 خالص روزانه: {daily_net:.2f} USDT
+
+            ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+
+            self.bot.reply_to(message, status_text)
+
+        @self.bot.message_handler(commands=['balance'])
+        def balance_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            # دریافت موجودی حساب
+            balance = self.exchange.get_balance()
+
+            balance_text = f"""
+            💰 موجودی حساب:
+
+            USDT: {balance:.2f}
+
+            ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+
+            self.bot.reply_to(message, balance_text)
+
+        @self.bot.message_handler(commands=['trades'])
+        def trades_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            # دریافت معاملات باز
+            open_trades = self.db.get_open_trades()
+
+            if not open_trades:
+                self.bot.reply_to(message, "در حال حاضر معامله بازی وجود ندارد.")
+                return
+
+            trades_text = "📋 معاملات باز:\n\n"
+
+            for trade in open_trades:
+                side_emoji = "🟢" if trade['side'] == 'BUY' else "🔴"
+                trades_text += f"""
+                {side_emoji} معامله #{trade['id']}:
+                نماد: {trade['symbol']}
+                جهت: {trade['side']}
+                قیمت ورود: {trade['entry_price']:.8f}
+                مقدار: {trade['quantity']:.8f}
+                حد ضرر: {trade['stop_loss']:.8f}
+                حد سود: {trade['take_profit']:.8f}
+                زمان ورود: {datetime.fromtimestamp(trade['entry_time']).strftime('%Y-%m-%d %H:%M:%S')}
+                """
+
+            self.bot.reply_to(message, trades_text)
+
+        @self.bot.message_handler(commands=['history'])
+        def history_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            # دریافت تاریخچه معاملات
+            closed_trades = self.db.get_last_closed_trades(10)
+
+            if not closed_trades:
+                self.bot.reply_to(message, "تاریخچه معاملات خالی است.")
+                return
+
+            history_text = "📜 تاریخچه معاملات:\n\n"
+
+            for trade in closed_trades:
+                profit_emoji = "✅" if trade['profit'] > 0 else "❌"
+                history_text += f"""
+                {profit_emoji} معامله #{trade['id']}:
+                نماد: {trade['symbol']}
+                جهت: {trade['side']}
+                قیمت ورود: {trade['entry_price']:.8f}
+                قیمت خروج: {trade['exit_price']:.8f}
+                سود/زیان: {trade['profit']:.8f} USDT
+                دلیل خروج: {trade['exit_reason']}
+                زمان خروج: {datetime.fromtimestamp(trade['exit_time']).strftime('%Y-%m-%d %H:%M:%S')}
+                """
+
+            self.bot.reply_to(message, history_text)
+
+
+        @self.bot.message_handler(commands=['profit'])
+        def profit_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            # دریافت سود/زیان کلی
+            total_profit = self.db.get_total_profit()
+            daily_profit = self.db.get_daily_profit()
+            daily_loss = self.db.get_daily_loss()
+            daily_net = daily_profit - daily_loss
+
+            # دریافت تعداد معاملات موفق و ناموفق
+            successful_trades, failed_trades = self.db.get_trade_stats()
+
+            # محاسبه نرخ موفقیت
+            total_trades = successful_trades + failed_trades
+            win_rate = (successful_trades / total_trades * 100) if total_trades > 0 else 0
+
+            profit_text = f"""
+            📊 گزارش سود/زیان:
+
+            💰 سود کلی: {total_profit:.2f} USDT
+            📈 سود روزانه: {daily_profit:.2f} USDT
+            📉 ضرر روزانه: {daily_loss:.2f} USDT
+            📊 خالص روزانه: {daily_net:.2f} USDT
+
+            ✅ معاملات موفق: {successful_trades}
+            ❌ معاملات ناموفق: {failed_trades}
+            🎯 نرخ موفقیت: {win_rate:.2f}%
+
+            ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+
+            self.bot.reply_to(message, profit_text)
+
+        @self.bot.message_handler(commands=['settings'])
+        def settings_command(message):
+            if str(message.chat.id) != str(self.chat_id):
+                return
+
+            settings_text = f"""
+            ⚙️ تنظیمات ربات:
+
+            💱 نماد معاملاتی: {self.config.symbol}
+            ⏱ تایم‌فریم: {self.config.timeframe}
+
+            📊 استراتژی RSI-ATR:
+            - دوره RSI: {self.config.rsi_period}
+            - دوره ATR: {self.config.atr_period}
+            - دوره MA: {self.config.ma_period}
+            - سطح اشباع فروش RSI: {self.config.rsi_oversold}
+            - سطح اشباع خرید RSI: {self.config.rsi_overbought}
+            - ضریب ATR: {self.config.atr_multiplier}
+            - نسبت ریسک به ریوارد: {self.config.risk_reward_ratio}
+
+            ⚠️ مدیریت ریسک:
+            - درصد ریسک هر معامله: {self.config.risk_per_trade}%
+            - حداکثر ضرر روزانه: {self.config.max_daily_loss}%
+            - حداکثر تعداد معاملات همزمان: {self.config.max_open_trades}
+            - حداکثر اندازه موقعیت: {self.config.max_position_size}%
+
+            ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+
+            self.bot.reply_to(message, settings_text)
+
+    def send_message(self, message):
+        """ارسال پیام به کاربر"""
+        try:
+            self.bot.send_message(self.chat_id, message)
+            return True
+        except Exception as e:
+            logger.error(f"خطا در ارسال پیام تلگرام: {str(e)}")
+            return False
+
+    def send_trade_notification(self, trade_data, action):
+        """ارسال اعلان معامله"""
+        try:
+            if action == 'OPEN':
+                side_emoji = "🟢" if trade_data['side'] == 'BUY' else "🔴"
+                message = f"""
+                {side_emoji} معامله جدید باز شد:
+
+                نماد: {trade_data['symbol']}
+                جهت: {trade_data['side']}
+                قیمت ورود: {trade_data['entry_price']:.8f}
+                مقدار: {trade_data['quantity']:.8f}
+                حد ضرر: {trade_data['stop_loss']:.8f}
+                حد سود: {trade_data['take_profit']:.8f}
+
+                ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                """
+            elif action == 'CLOSE':
+                profit_emoji = "✅" if trade_data['profit'] > 0 else "❌"
+                message = f"""
+                {profit_emoji} معامله بسته شد:
+
+                نماد: {trade_data['symbol']}
+                جهت: {trade_data['side']}
+                قیمت ورود: {trade_data['entry_price']:.8f}
+                قیمت خروج: {trade_data['exit_price']:.8f}
+                سود/زیان: {trade_data['profit']:.8f} USDT
+                دلیل خروج: {trade_data['exit_reason']}
+
+                ⏰ زمان: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                """
+
+            self.send_message(message)
+            return True
+        except Exception as e:
+            logger.error(f"خطا در ارسال اعلان معامله: {str(e)}")
+            return False
+
+    def start(self):
+        """شروع ربات تلگرام"""
+        if self.is_running:
+            logger.warning("ربات تلگرام در حال اجرا است")
+            return
+
+        def run_bot():
+            logger.info("ربات تلگرام شروع به کار کرد")
+            self.bot.polling(none_stop=True, interval=1)
+
+        self.bot_thread = threading.Thread(target=run_bot)
+        self.bot_thread.daemon = True
+        self.bot_thread.start()
+        self.is_running = True
+
+        # ارسال پیام شروع
+        self.send_message("🤖 ربات معاملاتی فعال شد")
+
+    def stop(self):
+        """توقف ربات تلگرام"""
+        if not self.is_running:
+            logger.warning("ربات تلگرام در حال اجرا نیست")
+            return
+
+        self.bot.stop_polling()
+        self.is_running = False
+        logger.info("ربات تلگرام متوقف شد")
+
+        # ارسال پیام توقف
+        self.send_message("🛑 ربات معاملاتی متوقف شد")
